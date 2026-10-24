@@ -1,5 +1,6 @@
 package com.trustvault.document;
 
+import com.trustvault.audit.AuditService;
 import com.trustvault.permission.DocumentGrant;
 import com.trustvault.permission.DocumentGrantRepository;
 import com.trustvault.permission.DocumentPermission;
@@ -16,65 +17,98 @@ public class DocumentAccessService {
     private final DocumentRepository documentRepository;
     private final AppUserRepository userRepository;
     private final DocumentGrantRepository grantRepository;
+    private final AuditService auditService;
 
     public DocumentAccessService(
             DocumentRepository documentRepository,
             AppUserRepository userRepository,
-            DocumentGrantRepository grantRepository) {
+            DocumentGrantRepository grantRepository,
+            AuditService auditService) {
         this.documentRepository = documentRepository;
         this.userRepository = userRepository;
         this.grantRepository = grantRepository;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
     public Document getOwnedDocument(
             Long documentId, String authenticatedEmail) {
-        AppUser user = findUser(authenticatedEmail);
+        try {
+            AppUser user = findUser(authenticatedEmail);
 
-        return documentRepository
-                .findByIdAndOwnerId(documentId, user.getId())
-                .orElseThrow(() ->
-                        new AccessDeniedException("Access denied"));
+            Document document = documentRepository
+                    .findByIdAndOwnerId(documentId, user.getId())
+                    .orElseThrow(() ->
+                            new AccessDeniedException("Access denied"));
+
+            record(authenticatedEmail, "OWNERSHIP_CHECK",
+                    documentId, "SUCCESS", "Owner access verified");
+            return document;
+        } catch (AccessDeniedException ex) {
+            record(authenticatedEmail, "OWNERSHIP_CHECK",
+                    documentId, "DENIED", "Ownership check failed");
+            throw ex;
+        }
     }
 
     @Transactional(readOnly = true)
     public Document getReadableDocument(
             Long documentId, String authenticatedEmail) {
-        AppUser user = findUser(authenticatedEmail);
-        Document document = findDocument(documentId);
+        try {
+            AppUser user = findUser(authenticatedEmail);
+            Document document = findDocument(documentId);
 
-        if (document.getOwner().getId().equals(user.getId())) {
+            if (document.getOwner().getId().equals(user.getId())) {
+                record(authenticatedEmail, "READ_ACCESS",
+                        documentId, "SUCCESS", "Owner access");
+                return document;
+            }
+
+            grantRepository
+                    .findByDocumentIdAndUserId(documentId, user.getId())
+                    .orElseThrow(() ->
+                            new AccessDeniedException("Access denied"));
+
+            record(authenticatedEmail, "READ_ACCESS",
+                    documentId, "SUCCESS", "Granted access");
             return document;
+        } catch (AccessDeniedException ex) {
+            record(authenticatedEmail, "READ_ACCESS",
+                    documentId, "DENIED", "Read authorization failed");
+            throw ex;
         }
-
-        DocumentGrant grant = grantRepository
-                .findByDocumentIdAndUserId(documentId, user.getId())
-                .orElseThrow(() ->
-                        new AccessDeniedException("Access denied"));
-
-        return document;
     }
 
     @Transactional(readOnly = true)
     public Document getEditableDocument(
             Long documentId, String authenticatedEmail) {
-        AppUser user = findUser(authenticatedEmail);
-        Document document = findDocument(documentId);
+        try {
+            AppUser user = findUser(authenticatedEmail);
+            Document document = findDocument(documentId);
 
-        if (document.getOwner().getId().equals(user.getId())) {
+            if (document.getOwner().getId().equals(user.getId())) {
+                record(authenticatedEmail, "EDIT_ACCESS",
+                        documentId, "SUCCESS", "Owner access");
+                return document;
+            }
+
+            DocumentGrant grant = grantRepository
+                    .findByDocumentIdAndUserId(documentId, user.getId())
+                    .orElseThrow(() ->
+                            new AccessDeniedException("Access denied"));
+
+            if (grant.getPermission() != DocumentPermission.EDIT) {
+                throw new AccessDeniedException("Access denied");
+            }
+
+            record(authenticatedEmail, "EDIT_ACCESS",
+                    documentId, "SUCCESS", "EDIT permission verified");
             return document;
+        } catch (AccessDeniedException ex) {
+            record(authenticatedEmail, "EDIT_ACCESS",
+                    documentId, "DENIED", "Edit authorization failed");
+            throw ex;
         }
-
-        DocumentGrant grant = grantRepository
-                .findByDocumentIdAndUserId(documentId, user.getId())
-                .orElseThrow(() ->
-                        new AccessDeniedException("Access denied"));
-
-        if (grant.getPermission() != DocumentPermission.EDIT) {
-            throw new AccessDeniedException("Access denied");
-        }
-
-        return document;
     }
 
     @Transactional
@@ -83,28 +117,37 @@ public class DocumentAccessService {
             String ownerEmail,
             String targetEmail,
             DocumentPermission permission) {
-        AppUser owner = findUser(ownerEmail);
-        Document document = documentRepository
-                .findByIdAndOwnerId(documentId, owner.getId())
-                .orElseThrow(() ->
-                        new AccessDeniedException("Access denied"));
+        try {
+            AppUser owner = findUser(ownerEmail);
+            Document document = documentRepository
+                    .findByIdAndOwnerId(documentId, owner.getId())
+                    .orElseThrow(() ->
+                            new AccessDeniedException("Access denied"));
 
-        AppUser target = findUser(targetEmail);
+            AppUser target = findUser(targetEmail);
 
-        if (target.getId().equals(owner.getId())) {
-            throw new IllegalArgumentException(
-                    "The owner already has full access");
-        }
+            if (target.getId().equals(owner.getId())) {
+                throw new IllegalArgumentException(
+                        "The owner already has full access");
+            }
 
-        DocumentGrant grant = grantRepository
-                .findByDocumentIdAndUserId(documentId, target.getId())
-                .orElse(null);
+            DocumentGrant grant = grantRepository
+                    .findByDocumentIdAndUserId(documentId, target.getId())
+                    .orElse(null);
 
-        if (grant == null) {
-            grantRepository.save(
-                    new DocumentGrant(document, target, permission));
-        } else {
-            grant.setPermission(permission);
+            if (grant == null) {
+                grantRepository.save(
+                        new DocumentGrant(document, target, permission));
+            } else {
+                grant.setPermission(permission);
+            }
+
+            record(ownerEmail, "DOCUMENT_SHARED",
+                    documentId, "SUCCESS", "Permission granted or updated");
+        } catch (AccessDeniedException ex) {
+            record(ownerEmail, "DOCUMENT_SHARED",
+                    documentId, "DENIED", "Sharing authorization failed");
+            throw ex;
         }
     }
 
@@ -113,14 +156,24 @@ public class DocumentAccessService {
             Long documentId,
             String ownerEmail,
             String targetEmail) {
-        AppUser owner = findUser(ownerEmail);
-        documentRepository.findByIdAndOwnerId(documentId, owner.getId())
-                .orElseThrow(() ->
-                        new AccessDeniedException("Access denied"));
+        try {
+            AppUser owner = findUser(ownerEmail);
+            documentRepository
+                    .findByIdAndOwnerId(documentId, owner.getId())
+                    .orElseThrow(() ->
+                            new AccessDeniedException("Access denied"));
 
-        AppUser target = findUser(targetEmail);
-        grantRepository.deleteByDocumentIdAndUserId(
-                documentId, target.getId());
+            AppUser target = findUser(targetEmail);
+            grantRepository.deleteByDocumentIdAndUserId(
+                    documentId, target.getId());
+
+            record(ownerEmail, "ACCESS_REVOKED",
+                    documentId, "SUCCESS", "Access revocation requested");
+        } catch (AccessDeniedException ex) {
+            record(ownerEmail, "ACCESS_REVOKED",
+                    documentId, "DENIED", "Revocation authorization failed");
+            throw ex;
+        }
     }
 
     private AppUser findUser(String email) {
@@ -133,5 +186,14 @@ public class DocumentAccessService {
         return documentRepository.findById(documentId)
                 .orElseThrow(() ->
                         new AccessDeniedException("Access denied"));
+    }
+
+    private void record(
+            String actor,
+            String action,
+            Long documentId,
+            String outcome,
+            String details) {
+        auditService.record(actor, action, documentId, outcome, details);
     }
 }

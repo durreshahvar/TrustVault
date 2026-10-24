@@ -1,3 +1,4 @@
+
 package com.trustvault.security;
 
 import com.trustvault.user.AppUser;
@@ -15,27 +16,46 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 public class DevDataInitializer {
 
     @Bean
-    CommandLineRunner createDevelopmentOwner(
+    CommandLineRunner createDevelopmentUsers(
             AppUserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            @Value("${trustvault.dev-owner.email}") String email,
-            @Value("${trustvault.dev-owner.password}") String password) {
+            @Value("${trustvault.dev-owner.email:}") String ownerEmail,
+            @Value("${trustvault.dev-owner.password:}") String ownerPassword,
+            @Value("${trustvault.dev-viewer.email:}") String viewerEmail,
+            @Value("${trustvault.dev-viewer.password:}") String viewerPassword) {
 
         return args -> {
-            if (password == null || password.length() < 12) {
-                throw new IllegalStateException(
-                    "Development owner password must be at least 12 characters."
-                );
-            }
+            createUserIfMissing(
+                    userRepository, passwordEncoder,
+                    ownerEmail, ownerPassword, UserRole.OWNER);
 
-            if (!userRepository.existsByEmailIgnoreCase(email)) {
-                userRepository.save(new AppUser(
-                    email,
-                    passwordEncoder.encode(password),
-                    UserRole.OWNER
-                ));
-                System.out.println("Created development OWNER account: " + email);
-            }
+            createUserIfMissing(
+                    userRepository, passwordEncoder,
+                    viewerEmail, viewerPassword, UserRole.VIEWER);
         };
+    }
+
+    private void createUserIfMissing(
+            AppUserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            String email,
+            String password,
+            UserRole role) {
+
+        if (email == null || email.isBlank()
+                || password == null || password.length() < 12) {
+            throw new IllegalStateException(
+                    "Development " + role
+                    + " email must be set and password must be at least 12 characters.");
+        }
+
+        if (!userRepository.existsByEmailIgnoreCase(email)) {
+            userRepository.save(new AppUser(
+                    email.trim(),
+                    passwordEncoder.encode(password),
+                    role));
+            System.out.println(
+                    "Created development " + role + " account: " + email);
+        }
     }
 }
