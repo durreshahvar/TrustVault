@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TrustVault — Secure Workspace</title>
+<style>
+:root {
+  --bg: #f4f6fb;
+  --ink: #182230;
+  --muted: #748094;
+  --accent: #5546d7;
+  --line: #e5e8f0;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.visual {
+  margin: 18px;
+  border-radius: 24px;
+  background: linear-gradient(145deg, #171b38, #37316d 65%, #6557c8);
+  color: white;
+  padding: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: calc(100vh - 36px);
+}
+.brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 20px; }
+.logo {
+  width: 42px; height: 42px; border-radius: 13px;
+  background: #ffffff1c; display: grid; place-items: center;
+  border: 1px solid #ffffff40; font-size: 22px;
+}
+.visual h1 { font-size: clamp(34px, 4vw, 55px); line-height: 1.1; letter-spacing: -1.8px; margin: 0 0 20px; }
+.visual p { color: #e0def8; line-height: 1.8; max-width: 420px; }
+.security-note { color: #dedcf8; font-size: 13px; }
+.main { display: grid; place-items: center; padding: 36px; }
+.panel { width: 100%; max-width: 410px; }
+.eyebrow { color: var(--accent); font-weight: 700; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; }
+h2 { font-size: 32px; letter-spacing: -1px; margin: 12px 0 8px; }
+.subtitle { color: var(--muted); font-size: 14px; line-height: 1.7; margin-bottom: 32px; }
+label { display: block; font-size: 13px; font-weight: 650; margin: 18px 0 8px; }
+input {
+  width: 100%; padding: 14px 15px; border: 1px solid var(--line);
+  border-radius: 11px; background: white; font-size: 14px; outline: none;
+}
+input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #5546d71a; }
+.password-wrap { display: flex; gap: 8px; }
+.password-wrap input { flex: 1; min-width: 0; }
+.show {
+  border: 1px solid var(--line); background: white; border-radius: 11px;
+  padding: 0 12px; cursor: pointer; color: var(--muted);
+}
+.submit {
+  width: 100%; margin-top: 24px; padding: 15px; border: 0;
+  border-radius: 11px; background: var(--accent); color: white;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 8px 18px #5546d72b;
+}
+.submit:disabled { opacity: .65; cursor: wait; }
+.message { min-height: 24px; margin-top: 14px; font-size: 13px; line-height: 1.5; }
+.message.error { color: #c13746; }
+.message.success { color: #18794e; }
+.privacy { margin-top: 26px; color: var(--muted); font-size: 12px; text-align: center; }
+@media (max-width: 760px) {
+  body { grid-template-columns: 1fr; }
+  .visual { min-height: 220px; padding: 25px; margin: 10px 10px 0; }
+  .visual h1 { font-size: 32px; margin-top: 32px; }
+  .visual p, .security-note { display: none; }
+  .main { padding: 35px 24px; }
+}
+</style>
+</head>
+<body>
+<section class="visual">
+  <div class="brand"><div class="logo">⬡</div> TrustVault</div>
+  <div>
+    <h1>Your documents.<br>Under your control.</h1>
+    <p>A secure workspace for managing private files, controlling access, and keeping track of document activity.</p>
+  </div>
+  <div class="security-note">◈ &nbsp; Secure access · Permission-based sharing · Audit trail</div>
+</section>
+
+<main class="main">
+  <form class="panel" id="loginForm">
+    <div class="eyebrow">Secure workspace</div>
+    <h2>Welcome back</h2>
+    <div class="subtitle">Sign in with your TrustVault account to continue to your workspace.</div>
+
+    <label for="email">Email address</label>
+    <input id="email" type="email" autocomplete="username"
+           placeholder="you@example.com" required>
+
+    <label for="password">Password</label>
+    <div class="password-wrap">
+      <input id="password" type="password" autocomplete="current-password"
+             placeholder="Enter your password" required>
+      <button class="show" type="button" id="togglePassword">Show</button>
+    </div>
+
+    <button class="submit" id="submitButton" type="submit">Sign in securely&nbsp; →</button>
+    <div class="message" id="message" role="status" aria-live="polite"></div>
+    <div class="privacy">Your credentials are used to authenticate with TrustVault.</div>
+  </form>
+</main>
+
+<script>
+const form = document.getElementById('loginForm');
+const email = document.getElementById('email');
+const password = document.getElementById('password');
+const message = document.getElementById('message');
+const submit = document.getElementById('submitButton');
+
+document.getElementById('togglePassword').addEventListener('click', () => {
+  const hidden = password.type === 'password';
+  password.type = hidden ? 'text' : 'password';
+  document.getElementById('togglePassword').textContent = hidden ? 'Hide' : 'Show';
+});
+
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  message.className = 'message';
+  message.textContent = '';
+  submit.disabled = true;
+  submit.textContent = 'Checking credentials…';
+
+  try {
+    const credentials = btoa(unescape(encodeURIComponent(email.value.trim())) + ':' +
+      unescape(encodeURIComponent(password.value)));
+    const response = await fetch('/api/health', {
+      headers: { 'Authorization': 'Basic ' + credentials }
+    });
+
+    if (response.ok) {
+      message.className = 'message success';
+      message.textContent = 'Authenticated successfully. Your TrustVault API is ready.';
+    } else if (response.status === 401 || response.status === 403) {
+      message.className = 'message error';
+      message.textContent = 'We could not verify those credentials. Please check your email and password.';
+    } else {
+      message.className = 'message error';
+      message.textContent = 'TrustVault responded with an unexpected status. Please try again.';
+    }
+  } catch {
+    message.className = 'message error';
+    message.textContent = 'Could not reach TrustVault. Check your connection and try again.';
+  } finally {
+    submit.disabled = false;
+    submit.textContent = 'Sign in securely  →';
+  }
+});
+</script>
+</body>
+</html>
