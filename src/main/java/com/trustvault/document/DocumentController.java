@@ -1,14 +1,17 @@
+
 package com.trustvault.document;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
-
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 
@@ -74,4 +77,18 @@ public class DocumentController {
         );
         return DocumentResponse.from(document);
     }
+
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    public DocumentResponse uploadDocument(
+            Authentication authentication,
+            @RequestParam("name") String name,
+            @RequestParam("category") String category,
+            @RequestParam("file") MultipartFile file) throws IOException {
+
+        Document document = documentService.uploadDocument(
+                authentication.getName(), name, category, file);
+        return DocumentResponse.from(document);
+    }
 }
+
