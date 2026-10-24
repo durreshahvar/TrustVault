@@ -22,29 +22,23 @@ class UserRepositoryTests {
     private PasswordEncoder passwordEncoder;
 
     @Test
-    void savedUserCanBeFoundByEmailAndPasswordIsHashed() {
-        String rawPassword = "Example-Only-Password-123!";
-        String hash = passwordEncoder.encode(rawPassword);
+void savedUserCanBeFoundByEmailAndPasswordIsHashed() {
+    String email = "repository-test@example.test";
+    String rawPassword = "Example-Only-Password-123!";
+    String hash = passwordEncoder.encode(rawPassword);
 
-        AppUser user = new AppUser(
-            "owner@example.test",
-            hash,
-            UserRole.OWNER
-        );
+    AppUser user = new AppUser(email, hash, UserRole.OWNER);
+    userRepository.save(user);
 
-        userRepository.save(user);
+    AppUser found = userRepository
+        .findByEmailIgnoreCase("REPOSITORY-TEST@example.test")
+        .orElseThrow();
 
-        AppUser found = userRepository
-            .findByEmailIgnoreCase("OWNER@example.test")
-            .orElseThrow();
-
-        assertEquals(UserRole.OWNER, found.getRole());
-        assertNotEquals(rawPassword, found.getPasswordHash());
-        assertTrue(passwordEncoder.matches(
-            rawPassword, found.getPasswordHash()
-        ));
-        assertFalse(passwordEncoder.matches(
-            "Wrong-Password", found.getPasswordHash()
-        ));
-    }
+    assertEquals(UserRole.OWNER, found.getRole());
+    assertNotEquals(rawPassword, found.getPasswordHash());
+    assertTrue(passwordEncoder.matches(rawPassword, found.getPasswordHash()));
+    assertFalse(passwordEncoder.matches(
+        "Wrong-Password", found.getPasswordHash()
+    ));
+}
 }

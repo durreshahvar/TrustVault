@@ -29,24 +29,22 @@ class DatabaseUserDetailsServiceTests {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+@Test
+void loadsStoredUserWithCorrectRole() {
+    String email = "role-test@example.test";
+    String password = "Example-Only-Password-123!";
+    String hash = passwordEncoder.encode(password);
 
-    @Test
-    void loadsStoredUserWithCorrectRole() {
-        String hash = passwordEncoder.encode("Example-Only-Password-123!");
-        userRepository.save(new AppUser(
-            "owner@example.test", hash, UserRole.OWNER
-        ));
+    userRepository.save(new AppUser(email, hash, UserRole.OWNER));
 
-        UserDetails details =
-            userDetailsService.loadUserByUsername("OWNER@example.test");
+    UserDetails details =
+        userDetailsService.loadUserByUsername(email.toUpperCase());
 
-        assertEquals("owner@example.test", details.getUsername());
-        assertTrue(details.getAuthorities().stream()
-            .anyMatch(authority -> authority.getAuthority().equals("ROLE_OWNER")));
-        assertTrue(passwordEncoder.matches(
-            "Example-Only-Password-123!", details.getPassword()
-        ));
-    }
+    assertEquals(email, details.getUsername());
+    assertTrue(details.getAuthorities().stream()
+        .anyMatch(authority -> authority.getAuthority().equals("ROLE_OWNER")));
+    assertTrue(passwordEncoder.matches(password, details.getPassword()));
+}
 
     @Test
     void unknownEmailIsRejected() {
