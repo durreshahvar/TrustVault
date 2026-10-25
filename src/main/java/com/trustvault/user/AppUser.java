@@ -48,6 +48,9 @@ public class AppUser {
     public String getPasswordHash() {
         return passwordHash;
     }
+public void updatePasswordHash(String passwordHash) {
+    this.passwordHash = Objects.requireNonNull(passwordHash);
+}
 
     public UserRole getRole() {
         return role;

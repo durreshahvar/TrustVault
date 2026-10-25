@@ -48,14 +48,20 @@ public class DevDataInitializer {
                     "Development " + role
                     + " email must be set and password must be at least 12 characters.");
         }
+var existingUser = userRepository.findByEmailIgnoreCase(email.trim());
 
-        if (!userRepository.existsByEmailIgnoreCase(email)) {
-            userRepository.save(new AppUser(
-                    email.trim(),
-                    passwordEncoder.encode(password),
-                    role));
-            System.out.println(
-                    "Created development " + role + " account: " + email);
-        }
+if (existingUser.isEmpty()) {
+    userRepository.save(new AppUser(
+            email.trim(),
+            passwordEncoder.encode(password),
+            role));
+    System.out.println(
+            "Created development " + role + " account: " + email);
+} else if (role == UserRole.OWNER) {
+    AppUser owner = existingUser.get();
+    owner.updatePasswordHash(passwordEncoder.encode(password));
+    userRepository.save(owner);
+    System.out.println("Updated local development owner password.");
+}
     }
 }

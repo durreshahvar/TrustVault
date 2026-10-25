@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrustVault | Dashboard</title>
+<style>
+:root{--bg:#f7f5ff;--card:#fff;--purple:#7047eb;--dark:#24164b;--muted:#77718d;--line:#e9e4f6;--soft:#f0ebff;--green:#18794e;--red:#b42318}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--dark);font:15px/1.5 Inter,system-ui,-apple-system,sans-serif}
+header{background:#fff;border-bottom:1px solid var(--line);padding:16px 5%;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font-size:22px;font-weight:800;color:var(--purple)}button,input,select{font:inherit}button{cursor:pointer;border:0;border-radius:10px;padding:10px 15px;background:var(--purple);color:#fff;font-weight:650}button:disabled{opacity:.55;cursor:wait}.secondary{background:var(--soft);color:var(--purple)}.danger{background:#fff0ef;color:var(--red)}
+main{max-width:1200px;margin:28px auto;padding:0 20px}.welcome{margin-bottom:22px}.welcome h1{margin:0 0 5px;font-size:30px}.muted{color:var(--muted)}.layout{display:grid;grid-template-columns:1fr 1fr;gap:18px}.panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:20px;min-width:0}.panel h2{font-size:19px;margin:0 0 14px}.panel h3{font-size:16px;margin:0 0 8px}.field{display:flex;flex-direction:column;gap:6px;margin:12px 0}.field label{font-weight:650;font-size:13px}.field input,.field select{width:100%;padding:10px;border:1px solid #dcd5ee;border-radius:9px;background:white;color:var(--dark)}.field select[multiple]{min-height:110px}.hint{font-size:12px;color:var(--muted)}.doc{padding:14px 0;border-top:1px solid var(--line)}.doc:first-child{border-top:0}.doc-title{font-weight:750;overflow-wrap:anywhere}.meta{font-size:12px;color:var(--muted);margin:4px 0 10px;overflow-wrap:anywhere}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{font-size:13px;padding:8px 11px}.pill{display:inline-block;font-size:11px;border-radius:20px;padding:3px 8px;background:var(--soft);color:var(--purple);margin-left:5px}.status{font-size:13px;margin-top:8px}.empty{color:var(--muted);padding:12px 0}.request-row{border-top:1px solid var(--line);padding:12px 0}.request-row:first-child{border-top:0}.notice{padding:12px 14px;background:var(--soft);border-radius:10px;margin-bottom:16px;white-space:pre-wrap}.error{background:#fff0ef;color:var(--red)}.success{background:#eaf8f0;color:var(--green)}.section-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.small{font-size:12px}.hidden{display:none!important}
+@media(max-width:760px){.layout{grid-template-columns:1fr}header{padding:14px 18px}main{margin-top:20px;padding:0 12px}.welcome h1{font-size:25px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">◆ TrustVault</div>
+  <button id="logout" class="secondary">Log out</button>
+</header>
+<main>
+  <div class="welcome">
+    <h1>Your secure workspace</h1>
+    <div class="muted">Manage documents, share securely, and track access requests.</div>
+  </div>
+
+  <div id="notice" class="notice hidden" role="status"></div>
+
+  <section class="panel">
+    <h2>Upload a document</h2>
+    <form id="uploadForm">
+      <div class="layout">
+        <div>
+          <div class="field"><label for="docName">Document name</label><input id="docName" name="name" required maxlength="200" placeholder="e.g. Project Proposal"></div>
+          <div class="field"><label for="category">Category</label><input id="category" name="category" required maxlength="100" placeholder="e.g. Academic"></div>
+          <div class="field"><label for="file">Choose file</label><input id="file" name="file" type="file" required></div>
+        </div>
+        <div>
+          <div class="field"><label for="shareUsers">Share with registered users (optional)</label><select id="shareUsers" multiple></select><div class="hint">Use Ctrl/Cmd-click to select multiple people.</div></div>
+          <div class="field"><label for="sharePermission">Permission for selected users</label><select id="sharePermission"><option value="READ">READ — view/download</option><option value="EDIT">EDIT — edit permission</option></select></div>
+          <button id="uploadButton" type="submit">Upload document</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <div class="layout">
+    <section class="panel">
+      <div class="section-head"><h2>Documents you can access</h2><button id="refresh" class="secondary">Refresh</button></div>
+      <div class="muted small">Your documents and documents shared with you.</div>
+      <div id="accessibleDocs"><div class="empty">Loading documents…</div></div>
+    </section>
+    <section class="panel">
+      <h2>Documents requiring permission</h2>
+      <div class="muted small">Only document details are shown until the owner grants access.</div>
+      <div id="restrictedDocs"><div class="empty">Loading documents…</div></div>
+    </section>
+  </div>
+
+  <div class="layout">
+    <section class="panel">
+      <h2>Access requests for your documents</h2>
+      <div class="muted small">Approve or reject requests from other users.</div>
+      <div id="incomingRequests"><div class="empty">Loading requests…</div></div>
+    </section>
+    <section class="panel">
+      <h2>My access requests</h2>
+      <div id="myRequests"><div class="empty">Loading requests…</div></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+function showNotice(message, type='') {
+  const el=$('notice'); el.textContent=message; el.className='notice'+(type?' '+type:'');
+  el.classList.remove('hidden'); window.scrollTo({top:0,behavior:'smooth'});
+}
+async function api(url, options={}) {
+  const response=await fetch(url,{credentials:'same-origin',...options});
+  if(response.status===401 || response.status===403){throw new Error('Your session may have expired. Please log in again.');}
+  if(!response.ok){
+    let message='Request failed ('+response.status+')';
+    try{const body=await response.json();message=body.message||body.error||message;}catch{}
+    throw new Error(message);
+  }
+  if(response.status===204)return null;
+  const type=response.headers.get('content-type')||'';
+  return type.includes('application/json')?response.json():response;
+}
+function el(tag, text, cls) {
+  const node=document.createElement(tag);
+  if(text!==undefined && text!==null)node.textContent=String(text);
+  if(cls)node.className=cls;
+  return node;
+}
+function button(label, handler, cls='') {
+  const b=el('button',label,cls);b.type='button';b.addEventListener('click',handler);return b;
+}
+function empty(container,message){container.replaceChildren(el('div',message,'empty'));}
+function prettyDate(value){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?value:d.toLocaleString();}
+function docCard(d, restricted) {
+  const card=el('div',undefined,'doc');
+  const title=el('div',d.name||'Untitled document','doc-title');
+  title.append(el('span',d.ownedByMe?'OWNER':(restricted?'RESTRICTED':'SHARED'),'pill'));
+  card.append(title);
+  card.append(el('div',`Owner: ${d.ownerEmail||'Unknown'} · Category: ${d.category||'Uncategorised'} · Size: ${d.sizeBytes??'—'} bytes`,'meta'));
+  if(d.createdAt)card.append(el('div','Created: '+prettyDate(d.createdAt),'meta'));
+  const actions=el('div',undefined,'actions');
+  if(!restricted){
+    actions.append(button('Download',async()=>{
+      try{
+        const response=await fetch(`/api/documents/${encodeURIComponent(d.id)}/download`,{credentials:'same-origin'});
+        if(response.status===401||response.status===403)throw new Error('You are not authorised. Please log in again if your session expired.');
+        if(!response.ok)throw new Error('Download failed ('+response.status+').');
+        const blob=await response.blob(), url=URL.createObjectURL(blob), a=document.createElement('a');
+        a.href=url;a.download=d.name||'document';document.body.append(a);a.click();a.remove();URL.revokeObjectURL(url);
+      }catch(e){showNotice(e.message,'error');}
+    }));
+  }else{
+    actions.append(button('Request READ access',()=>requestAccess(d.id,'READ')));
+    actions.append(button('Request EDIT access',()=>requestAccess(d.id,'EDIT'),'secondary'));
+  }
+  card.append(actions);
+  return card;
+}
+async function requestAccess(documentId,permission){
+  try{
+    await api('/api/access-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({documentId,permission})});
+    showNotice('Access request submitted.','success');await loadAll();
+  }catch(e){showNotice(e.message,'error');}
+}
+async function loadDocuments(){
+  const data=await api('/api/documents/discover');
+  const accessible=$('accessibleDocs'), restricted=$('restrictedDocs');
+  accessible.replaceChildren();restricted.replaceChildren();
+  let a=0,r=0;
+  for(const d of data){
+    if(d.ownedByMe||d.canAccess){accessible.append(docCard(d,false));a++;}
+    else{restricted.append(docCard(d,true));r++;}
+  }
+  if(!a)empty(accessible,'No accessible documents yet. Upload your first document above.');
+  if(!r)empty(restricted,'No other documents are available to request.');
+}
+async function loadUsers(){
+  const users=await api('/api/users');
+  const select=$('shareUsers');select.replaceChildren();
+  for(const user of users){
+    const option=el('option',user.email);option.value=user.email;select.append(option);
+  }
+}
+async function loadIncoming(){
+  const requests=await api('/api/access-requests/pending');
+  const container=$('incomingRequests');container.replaceChildren();
+  if(!requests.length){empty(container,'No pending requests.');return;}
+  for(const r of requests){
+    const row=el('div',undefined,'request-row');
+    row.append(el('div',r.documentName||('Document #'+r.documentId),'doc-title'));
+    row.append(el('div',`${r.requesterEmail} requests ${r.permission} · ${prettyDate(r.createdAt)}`,'meta'));
+    const actions=el('div',undefined,'actions');
+    actions.append(button('Approve',()=>resolveRequest(r.id,true)));
+    actions.append(button('Reject',()=>resolveRequest(r.id,false),'danger'));
+    row.append(actions);container.append(row);
+  }
+}
+async function resolveRequest(id,approve){
+  try{
+    await api(`/api/access-requests/${encodeURIComponent(id)}/${approve?'approve':'reject'}`,{method:'POST'});
+    showNotice(approve?'Access approved.':'Request rejected.', 'success');await loadAll();
+  }catch(e){showNotice(e.message,'error');}
+}
+async function loadMine(){
+  const requests=await api('/api/access-requests/mine');
+  const container=$('myRequests');container.replaceChildren();
+  if(!requests.length){empty(container,'You have not requested access to any documents.');return;}
+  for(const r of requests){
+    const row=el('div',undefined,'request-row');
+    row.append(el('div',r.documentName||('Document #'+r.documentId),'doc-title'));
+    row.append(el('div',`Permission: ${r.permission} · Status: ${r.status}`,'meta'));
+    row.append(el('div',prettyDate(r.createdAt),'meta'));container.append(row);
+  }
+}
+async function loadAll(){
+  try{
+    await Promise.all([loadDocuments(),loadIncoming(),loadMine(),loadUsers()]);
+  }catch(e){showNotice(e.message,'error');}
+}
+$('uploadForm').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const submit=$('uploadButton');submit.disabled=true;submit.textContent='Uploading…';
+  try{
+    const form=new FormData();
+    form.append('name',$('docName').value.trim());
+    form.append('category',$('category').value.trim());
+    form.append('file',$('file').files[0]);
+    const uploaded=await api('/api/documents',{method:'POST',body:form});
+    const id=uploaded.id;
+    const targets=Array.from($('shareUsers').selectedOptions).map(o=>o.value);
+    const permission=$('sharePermission').value;
+    const failures=[];
+    for(const targetEmail of targets){
+      try{
+        await api(`/api/documents/${encodeURIComponent(id)}/grants`,{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({targetEmail,permission})
+        });
+      }catch(e){failures.push(targetEmail+': '+e.message);}
+    }
+    $('uploadForm').reset();
+    showNotice(failures.length
+      ?'Document uploaded, but some shares failed:\n'+failures.join('\n')
+      :'Document uploaded successfully'+(targets.length?' and shared with selected users.':'.'),
+      failures.length?'error':'success');
+    await loadAll();
+  }catch(e){showNotice(e.message,'error');}
+  finally{submit.disabled=false;submit.textContent='Upload document';}
+});
+$('refresh').addEventListener('click',loadAll);
+$('logout').addEventListener('click',async()=>{
+  try{await fetch('/logout',{method:'POST',credentials:'same-origin'});}finally{window.location.href='/';}
+});
+loadAll();
+</script>
+</body>
+</html>
