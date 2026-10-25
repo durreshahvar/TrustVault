@@ -1,13 +1,10 @@
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM eclipse-temurin:21-jdk-jammy
 WORKDIR /app
-COPY pom.xml .
-COPY .mvn .mvn
-COPY mvnw .
-COPY src src
-RUN chmod +x mvnw && ./mvnw clean package -DskipTests
-
-FROM eclipse-temurin:21-jre
-WORKDIR /app
-COPY --from=build /app/target/*.jar app.jar
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libreoffice-writer libreoffice-calc libreoffice-impress \
+    fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea \
+    && rm -rf /var/lib/apt/lists/*
+COPY . .
+RUN chmod +x mvnw && ./mvnw -B package -DskipTests
 EXPOSE 8080
-CMD ["sh", "-c", "java -Dserver.port=${PORT:-8080} -jar app.jar"]
+CMD ["sh", "-c", "java -Dserver.port=${PORT:-8080} -jar target/*.jar"]

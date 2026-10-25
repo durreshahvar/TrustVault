@@ -214,6 +214,96 @@ public class DocumentController {
                 .body(new FileSystemResource(path));
     }
 
+
+    // Convert Office documents to a private, browser-viewable PDF.
+    @GetMapping("/{documentId}/preview-pdf")
+    public ResponseEntity<org.springframework.core.io.Resource> previewOfficeAsPdf(
+            Authentication authentication,
+            @PathVariable Long documentId) throws IOException {
+
+        Document document = documentAccessService.getReadableDocument(
+                documentId, authentication.getName());
+        Path source = fileStorageService.resolve(document.getStorageKey());
+
+        if (!Files.isRegularFile(source)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document file not found");
+        }
+
+        String originalName = document.getName() == null ? "document" : document.getName();
+        String lowerName = originalName.toLowerCase(java.util.Locale.ROOT);
+        String contentType = document.getContentType() == null ? "" :
+                document.getContentType().toLowerCase(java.util.Locale.ROOT);
+
+        String extension = "";
+        int dot = lowerName.lastIndexOf('.');
+        if (dot >= 0) extension = lowerName.substring(dot);
+
+        if (extension.isEmpty()) {
+            if (contentType.contains("wordprocessingml")) extension = ".docx";
+            else if (contentType.contains("msword")) extension = ".doc";
+            else if (contentType.contains("spreadsheetml")) extension = ".xlsx";
+            else if (contentType.contains("ms-excel")) extension = ".xls";
+            else if (contentType.contains("presentationml")) extension = ".pptx";
+            else if (contentType.contains("powerpoint")) extension = ".ppt";
+            else throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Cannot identify this Office document format");
+        }
+
+        if (!java.util.Set.of(".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx")
+                .contains(extension)) {
+            throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "This endpoint previews Word, Excel and PowerPoint files");
+        }
+
+        Path tempDir = Files.createTempDirectory("trustvault-preview-");
+        try {
+            Path input = tempDir.resolve("document" + extension);
+            Path output = tempDir.resolve("document.pdf");
+            Path log = tempDir.resolve("converter.log");
+            Files.copy(source, input);
+
+            Process process = new ProcessBuilder(
+                    "libreoffice", "-env:UserInstallation=file://" +
+                    tempDir.resolve("lo-profile").toAbsolutePath(),
+                    "--headless", "--convert-to", "pdf", "--outdir",
+                    tempDir.toString(), input.toString())
+                    .redirectErrorStream(true)
+                    .redirectOutput(log.toFile())
+                    .start();
+
+            if (!process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                throw new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT,
+                        "Document conversion timed out");
+            }
+            if (process.exitValue() != 0 || !Files.isRegularFile(output)) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Could not convert this document for browser preview");
+            }
+
+            byte[] pdf = Files.readAllBytes(output);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            ContentDisposition.inline().filename("preview.pdf").build().toString())
+                    .header("X-Content-Type-Options", "nosniff")
+                    .contentLength(pdf.length)
+                    .body(new org.springframework.core.io.ByteArrayResource(pdf));
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Document preview was interrupted");
+        } finally {
+            try (var paths = Files.walk(tempDir)) {
+                paths.sorted(java.util.Comparator.reverseOrder())
+                        .forEach(item -> {
+                            try { Files.deleteIfExists(item); }
+                            catch (IOException ignored) {}
+                        });
+            }
+        }
+    }
+
     // Download only when the user has READ or EDIT access.
     @GetMapping("/{documentId}/download")
     public ResponseEntity<Resource> downloadDocument(

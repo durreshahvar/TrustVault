@@ -148,18 +148,18 @@ function docCard(d, restricted) {
           ];
 
           if (officeTypes.includes(type)) {
-            const url = URL.createObjectURL(blob);
-            tab.document.open();
-            tab.document.write(
-              '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">' +
-              '<title>Document preview</title>' +
-              '<body style="font:16px sans-serif;padding:24px">' +
-              '<h2>Office document</h2>' +
-              '<p>This format needs an Office-compatible viewer to display its contents in the browser.</p>' +
-              '<p>TrustVault has not enabled an Office rendering service yet. The file remains protected by your access permissions.</p>' +
-              '</body>'
+            const converted = await fetch(
+              `/api/documents/${encodeURIComponent(d.id)}/preview-pdf`,
+              { credentials: 'same-origin' }
             );
-            tab.document.close();
+            if (!converted.ok) {
+              const message = await converted.text();
+              throw new Error('Office preview failed (' + converted.status + '). ' +
+                message.substring(0, 180));
+            }
+            const pdf = await converted.blob();
+            const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+            tab.location.href = url;
             return;
           }
 
