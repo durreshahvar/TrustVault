@@ -165,36 +165,50 @@ public class DocumentController {
                     HttpStatus.NOT_FOUND, "Document file not found");
         }
 
-        String fileName = document.getName() == null ? "" : document.getName().toLowerCase();
-    byte[] signature = new byte[5];
-    try (var input = Files.newInputStream(path)) {
-        int count = input.read(signature);
-        if (count < 5) {
-            throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "File cannot be previewed");
-        }
-    }
+        String name = document.getName() == null
+                ? "" : document.getName().toLowerCase(java.util.Locale.ROOT);
 
-    MediaType mediaType;
-    if (fileName.endsWith(".pdf") ||
-        (signature[0] == '%' && signature[1] == 'P' && signature[2] == 'D' &&
-         signature[3] == 'F' && signature[4] == '-')) {
-        mediaType = MediaType.APPLICATION_PDF;
-    } else if (fileName.endsWith(".png")) {
-        mediaType = MediaType.IMAGE_PNG;
-    } else if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
-        mediaType = MediaType.IMAGE_JPEG;
-    } else if (fileName.endsWith(".gif")) {
-        mediaType = MediaType.IMAGE_GIF;
-    } else if (fileName.endsWith(".txt")) {
-        mediaType = MediaType.TEXT_PLAIN;
-    } else {
-        throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-            "Preview is not supported for this file type. Download it to open it.");
-    }
-    return ResponseEntity.ok()
-                .contentType(mediaType)
+        MediaType type = MediaType.APPLICATION_OCTET_STREAM;
+        byte[] sig = new byte[5];
+        int count;
+        try (var input = Files.newInputStream(path)) {
+            count = input.read(sig);
+        }
+
+        if (count >= 5 && sig[0] == '%' && sig[1] == 'P'
+                && sig[2] == 'D' && sig[3] == 'F' && sig[4] == '-') {
+            type = MediaType.APPLICATION_PDF;
+        } else if (name.endsWith(".pdf")) {
+            type = MediaType.APPLICATION_PDF;
+        } else if (name.endsWith(".png")) {
+            type = MediaType.IMAGE_PNG;
+        } else if (name.endsWith(".jpg") || name.endsWith(".jpeg")) {
+            type = MediaType.IMAGE_JPEG;
+        } else if (name.endsWith(".gif")) {
+            type = MediaType.IMAGE_GIF;
+        } else if (name.endsWith(".txt")) {
+            type = MediaType.TEXT_PLAIN;
+        } else {
+            try {
+                String stored = document.getContentType();
+                if (stored != null) {
+                    MediaType candidate = MediaType.parseMediaType(stored);
+                    if (candidate.equals(MediaType.APPLICATION_PDF)
+                            || candidate.getType().equals("image")
+                            || candidate.equals(MediaType.TEXT_PLAIN)) {
+                        type = candidate;
+                    }
+                }
+            } catch (org.springframework.http.InvalidMediaTypeException ignored) {
+                // Keep the safe default for unknown content types.
+            }
+        }
+
+        return ResponseEntity.ok()
+                .contentType(type)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        ContentDisposition.inline().filename(document.getName()).build().toString())
+                        ContentDisposition.inline()
+                                .filename(document.getName()).build().toString())
                 .header("X-Content-Type-Options", "nosniff")
                 .contentLength(Files.size(path))
                 .body(new FileSystemResource(path));
