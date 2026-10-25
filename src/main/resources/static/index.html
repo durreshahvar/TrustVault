@@ -171,6 +171,16 @@ form.addEventListener('submit', async (event) => {
   message.className = 'message';
   message.textContent = '';
 
+  if (registerMode && password.value.length < 12) {
+    message.textContent = 'Password must be at least 12 characters long.';
+    message.className = 'error';
+    return;
+  }
+  if (registerMode && password.value.length > 72) {
+    message.textContent = 'Password must not exceed 72 characters.';
+    message.className = 'error';
+    return;
+  }
   if (registerMode && password.value !== confirmPassword.value) {
     message.className = 'message error';
     message.textContent = 'Passwords do not match.';
