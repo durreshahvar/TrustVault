@@ -37,7 +37,7 @@ main{max-width:1200px;margin:28px auto;padding:0 20px}.welcome{margin-bottom:22p
         </div>
         <div>
           <div class="field"><label for="shareUsers">Share with registered users (optional)</label><select id="shareUsers" multiple></select><div class="hint">Use Ctrl/Cmd-click to select multiple people.</div></div>
-          <div class="field"><label for="sharePermission">Permission for selected users</label><select id="sharePermission"><option value="READ">READ — view/download</option><option value="EDIT">EDIT — edit permission</option></select></div>
+          <div class="field"><label for="sharePermission">Permission for selected users</label><select id="sharePermission"><option value="READ">VIEW ONLY — view in browser</option><option value="EDIT">DOWNLOAD & EDIT</option></select></div>
           <button id="uploadButton" type="submit">Upload document</button>
         </div>
       </div>
@@ -107,6 +107,10 @@ function docCard(d, restricted) {
   if(d.createdAt)card.append(el('div','Created: '+prettyDate(d.createdAt),'meta'));
   const actions=el('div',undefined,'actions');
   if(!restricted){
+    actions.append(button('View',()=>{
+      window.open(`/api/documents/${encodeURIComponent(d.id)}/view`, '_blank', 'noopener');
+    }));
+    if(d.ownedByMe || d.permission === 'EDIT'){
     actions.append(button('Download',async()=>{
       try{
         const response=await fetch(`/api/documents/${encodeURIComponent(d.id)}/download`,{credentials:'same-origin'});
@@ -116,6 +120,7 @@ function docCard(d, restricted) {
         a.href=url;a.download=d.name||'document';document.body.append(a);a.click();a.remove();URL.revokeObjectURL(url);
       }catch(e){showNotice(e.message,'error');}
     }));
+    }
   }else{
     actions.append(button('Request READ access',()=>requestAccess(d.id,'READ')));
     actions.append(button('Request EDIT access',()=>requestAccess(d.id,'EDIT'),'secondary'));

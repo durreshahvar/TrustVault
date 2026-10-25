@@ -150,13 +150,52 @@ public class DocumentController {
         return DocumentResponse.from(document);
     }
 
+    // View supported document types inline when the user has access.
+    @GetMapping("/{documentId}/view")
+    public ResponseEntity<Resource> viewDocument(
+            Authentication authentication,
+            @PathVariable Long documentId) throws IOException {
+
+        Document document = documentAccessService.getReadableDocument(
+                documentId, authentication.getName());
+        Path path = fileStorageService.resolve(document.getStorageKey());
+
+        if (!Files.isRegularFile(path)) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Document file not found");
+        }
+
+        MediaType mediaType;
+        try {
+            mediaType = MediaType.parseMediaType(document.getContentType());
+        } catch (org.springframework.http.InvalidMediaTypeException ex) {
+            mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+
+        if (!(mediaType.equals(MediaType.APPLICATION_PDF)
+                || mediaType.getType().equals("image")
+                || mediaType.equals(MediaType.TEXT_PLAIN))) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Inline viewing is supported for PDF, images, and plain text.");
+        }
+
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.inline().filename(document.getName()).build().toString())
+                .header("X-Content-Type-Options", "nosniff")
+                .contentLength(Files.size(path))
+                .body(new FileSystemResource(path));
+    }
+
     // Download only when the user has READ or EDIT access.
     @GetMapping("/{documentId}/download")
     public ResponseEntity<Resource> downloadDocument(
             Authentication authentication,
             @PathVariable Long documentId) throws IOException {
 
-        Document document = documentAccessService.getReadableDocument(
+        Document document = documentAccessService.getDownloadableDocument(
                 documentId,
                 authentication.getName()
         );

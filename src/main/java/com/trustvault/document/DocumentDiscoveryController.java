@@ -39,7 +39,8 @@ public class DocumentDiscoveryController {
             String ownerEmail,
             Instant createdAt,
             boolean ownedByMe,
-            boolean canAccess) {}
+            boolean canAccess,
+            String permission) {}
 
     @GetMapping("/discover")
     @Transactional(readOnly = true)
@@ -50,9 +51,12 @@ public class DocumentDiscoveryController {
         return documents.findAll().stream()
                 .map(doc -> {
                     boolean owner = doc.getOwner().getId().equals(current.getId());
-                    boolean granted = owner || grants
+                    var grant = owner ? null : grants
                             .findByDocumentIdAndUserId(doc.getId(), current.getId())
-                            .isPresent();
+                            .orElse(null);
+                    boolean granted = owner || grant != null;
+                    String permission = owner ? "OWNER"
+                            : (grant == null ? null : grant.getPermission().name());
 
                     return new DiscoveredDocument(
                             doc.getId(),
@@ -63,7 +67,8 @@ public class DocumentDiscoveryController {
                             doc.getOwner().getEmail(),
                             doc.getCreatedAt(),
                             owner,
-                            granted);
+                            granted,
+                            permission);
                 })
                 .toList();
     }

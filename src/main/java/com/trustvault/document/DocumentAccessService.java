@@ -80,6 +80,31 @@ public class DocumentAccessService {
     }
 
     @Transactional(readOnly = true)
+    public Document getDownloadableDocument(
+            Long documentId, String authenticatedEmail) {
+        Document document = getReadableDocument(documentId, authenticatedEmail);
+        AppUser user = findUser(authenticatedEmail);
+
+        if (!document.getOwner().getId().equals(user.getId())) {
+            DocumentGrant grant = grantRepository
+                    .findByDocumentIdAndUserId(documentId, user.getId())
+                    .orElseThrow(() ->
+                            new AccessDeniedException("Access denied"));
+
+            if (grant.getPermission() != DocumentPermission.EDIT) {
+                record(authenticatedEmail, "DOCUMENT_DOWNLOAD",
+                        documentId, "DENIED", "VIEW ONLY permission");
+                throw new AccessDeniedException(
+                        "This document is view-only. Download is not permitted.");
+            }
+        }
+
+        record(authenticatedEmail, "DOCUMENT_DOWNLOAD",
+                documentId, "SUCCESS", "Download permission verified");
+        return document;
+    }
+
+    @Transactional(readOnly = true)
     public Document getEditableDocument(
             Long documentId, String authenticatedEmail) {
         try {
