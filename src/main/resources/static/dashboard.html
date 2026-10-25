@@ -108,7 +108,46 @@ function docCard(d, restricted) {
   const actions=el('div',undefined,'actions');
   if(!restricted){
     actions.append(button('View',()=>{
-      window.open(`/api/documents/${encodeURIComponent(d.id)}/view`, '_blank', 'noopener');
+      const tab = window.open('about:blank', '_blank');
+      if (!tab) {
+        showNotice('Allow pop-ups to preview this document.', 'error');
+        return;
+      }
+
+      tab.document.write('<p style="font-family:sans-serif;padding:24px">Loading preview…</p>');
+
+      (async () => {
+        try {
+          const response = await fetch(
+            `/api/documents/${encodeURIComponent(d.id)}/view`,
+            { credentials: 'same-origin' }
+          );
+          if (!response.ok) throw new Error('Preview failed (' + response.status + ').');
+
+          const blob = await response.blob();
+          let type = (response.headers.get('Content-Type') || '').toLowerCase();
+          if (type.includes('application/octet-stream')) type = '';
+
+          const name = (d.name || '').toLowerCase();
+          if (!type || type === 'application/octet-stream') {
+            if (name.endsWith('.pdf')) type = 'application/pdf';
+            else if (name.endsWith('.png')) type = 'image/png';
+            else if (name.endsWith('.jpg') || name.endsWith('.jpeg')) type = 'image/jpeg';
+            else if (name.endsWith('.gif')) type = 'image/gif';
+            else if (name.endsWith('.txt')) type = 'text/plain';
+          }
+
+          if (!['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'text/plain'].includes(type)) {
+            throw new Error('This file type cannot be previewed in the browser.');
+          }
+
+          const url = URL.createObjectURL(new Blob([blob], { type }));
+          tab.location.href = url;
+        } catch (e) {
+          tab.close();
+          showNotice(e.message || 'Could not preview document.', 'error');
+        }
+      })();
     }));
     const canDownload = d.ownedByMe || d.permission === 'EDIT';
     if(canDownload){
