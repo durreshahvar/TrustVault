@@ -94,6 +94,15 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #5546d71a; }
     <div class="eyebrow">Secure workspace</div>
     <h2>Welcome back</h2>
     <div class="subtitle">Sign in with your TrustVault account to continue to your workspace.</div>
+    <div id="registerIntro" style="display:none" class="subtitle">
+      Create your secure account. You can then request access to documents shared by others.
+    </div>
+
+    <div id="registerFields" style="display:none">
+      <label for="confirmPassword">Confirm password</label>
+      <input id="confirmPassword" type="password"
+             autocomplete="new-password" placeholder="Re-enter your password">
+    </div>
 
     <label for="email">Email address</label>
     <input id="email" type="email" autocomplete="username"
@@ -108,6 +117,13 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #5546d71a; }
 
     <button class="submit" id="submitButton" type="submit">Sign in securely&nbsp; →</button>
     <div class="message" id="message" role="status" aria-live="polite"></div>
+    <div style="text-align:center;margin-top:18px;font-size:14px;color:var(--muted)">
+      <span id="switchPrompt">New to TrustVault?</span>
+      <button id="modeSwitch" type="button"
+        style="border:0;background:none;color:var(--accent);font-weight:700;cursor:pointer">
+        Create an account
+      </button>
+    </div>
     <div class="privacy">Your credentials are used to authenticate with TrustVault.</div>
   </form>
 </main>
@@ -118,6 +134,13 @@ const email = document.getElementById('email');
 const password = document.getElementById('password');
 const message = document.getElementById('message');
 const submit = document.getElementById('submitButton');
+const registerIntro = document.getElementById('registerIntro');
+const registerFields = document.getElementById('registerFields');
+const confirmPassword = document.getElementById('confirmPassword');
+const modeSwitch = document.getElementById('modeSwitch');
+const switchPrompt = document.getElementById('switchPrompt');
+const subtitle = form.querySelector('.subtitle');
+let registerMode = false;
 
 document.getElementById('togglePassword').addEventListener('click', () => {
   const hidden = password.type === 'password';
@@ -125,36 +148,102 @@ document.getElementById('togglePassword').addEventListener('click', () => {
   document.getElementById('togglePassword').textContent = hidden ? 'Hide' : 'Show';
 });
 
+modeSwitch.addEventListener('click', () => {
+  registerMode = !registerMode;
+  registerIntro.style.display = registerMode ? 'block' : 'none';
+  subtitle.style.display = registerMode ? 'none' : 'block';
+  registerFields.style.display = registerMode ? 'block' : 'none';
+  confirmPassword.required = registerMode;
+  password.autocomplete = registerMode ? 'new-password' : 'current-password';
+  document.getElementById('togglePassword').textContent = 'Show';
+  password.type = 'password';
+  document.querySelector('h2').textContent = registerMode ? 'Create your account' : 'Welcome back';
+  document.querySelector('.eyebrow').textContent = registerMode ? 'Join TrustVault' : 'Secure workspace';
+  submit.textContent = registerMode ? 'Create account →' : 'Sign in securely →';
+  switchPrompt.textContent = registerMode ? 'Already have an account?' : 'New to TrustVault?';
+  modeSwitch.textContent = registerMode ? 'Sign in' : 'Create an account';
+  message.className = 'message';
+  message.textContent = '';
+});
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   message.className = 'message';
   message.textContent = '';
+
+  if (registerMode && password.value !== confirmPassword.value) {
+    message.className = 'message error';
+    message.textContent = 'Passwords do not match.';
+    return;
+  }
+
   submit.disabled = true;
-  submit.textContent = 'Checking credentials…';
+  submit.textContent = registerMode ? 'Creating account…' : 'Signing in…';
 
   try {
-    const credentials = btoa(unescape(encodeURIComponent(email.value.trim())) + ':' +
-      unescape(encodeURIComponent(password.value)));
-    const response = await fetch('/api/health', {
-      headers: { 'Authorization': 'Basic ' + credentials }
+    if (registerMode) {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.value.trim(),
+          password: password.value
+        }),
+        credentials: 'same-origin'
+      });
+
+      if (response.status === 201) {
+        registerMode = false;
+        registerIntro.style.display = 'none';
+        subtitle.style.display = 'block';
+        registerFields.style.display = 'none';
+        confirmPassword.required = false;
+        document.querySelector('h2').textContent = 'Welcome back';
+        document.querySelector('.eyebrow').textContent = 'Secure workspace';
+        submit.textContent = 'Sign in securely →';
+        switchPrompt.textContent = 'New to TrustVault?';
+        modeSwitch.textContent = 'Create an account';
+        password.value = '';
+        confirmPassword.value = '';
+        password.autocomplete = 'current-password';
+        message.className = 'message success';
+        message.textContent = 'Account created! Please sign in with your new password.';
+        return;
+      }
+
+      const body = await response.json().catch(() => ({}));
+      message.className = 'message error';
+      message.textContent = response.status === 409
+        ? 'An account with this email already exists.'
+        : (body.detail || body.message || 'Could not create account. Check your details and try again.');
+      return;
+    }
+
+    const response = await fetch('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        username: email.value.trim(),
+        password: password.value
+      }),
+      credentials: 'same-origin'
     });
 
     if (response.ok) {
-      message.className = 'message success';
-      message.textContent = 'Authenticated successfully. Your TrustVault API is ready.';
-    } else if (response.status === 401 || response.status === 403) {
-      message.className = 'message error';
-      message.textContent = 'We could not verify those credentials. Please check your email and password.';
-    } else {
-      message.className = 'message error';
-      message.textContent = 'TrustVault responded with an unexpected status. Please try again.';
+      window.location.assign('/dashboard.html');
+      return;
     }
+
+    message.className = 'message error';
+    message.textContent = response.status === 401
+      ? 'Incorrect email or password. Please try again.'
+      : 'Sign-in failed. Please try again.';
   } catch {
     message.className = 'message error';
-    message.textContent = 'Could not reach TrustVault. Check your connection and try again.';
+    message.textContent = 'Could not reach TrustVault. Please try again.';
   } finally {
     submit.disabled = false;
-    submit.textContent = 'Sign in securely  →';
+    submit.textContent = registerMode ? 'Create account →' : 'Sign in securely →';
   }
 });
 </script>
