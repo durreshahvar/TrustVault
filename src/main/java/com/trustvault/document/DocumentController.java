@@ -177,7 +177,7 @@ public class DocumentController {
                 || mediaType.equals(MediaType.TEXT_PLAIN))) {
             throw new ResponseStatusException(
                     HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-                    "Inline viewing is supported for PDF, images, and plain text.");
+                    "This file type cannot be previewed in the browser yet. Use a PDF version to preview it.");
         }
 
         return ResponseEntity.ok()

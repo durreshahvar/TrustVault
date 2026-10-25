@@ -110,7 +110,8 @@ function docCard(d, restricted) {
     actions.append(button('View',()=>{
       window.open(`/api/documents/${encodeURIComponent(d.id)}/view`, '_blank', 'noopener');
     }));
-    if(d.ownedByMe || d.permission === 'EDIT'){
+    const canDownload = d.ownedByMe || d.permission === 'EDIT';
+    if(canDownload){
     actions.append(button('Download',async()=>{
       try{
         const response=await fetch(`/api/documents/${encodeURIComponent(d.id)}/download`,{credentials:'same-origin'});
