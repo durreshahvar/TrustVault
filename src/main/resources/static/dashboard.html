@@ -125,10 +125,11 @@ function docCard(d, restricted) {
           if (!response.ok) throw new Error('Preview failed (' + response.status + ').');
 
           const blob = await response.blob();
-          let type = (response.headers.get('Content-Type') || '').toLowerCase();
-          if (type.includes('application/octet-stream')) type = '';
-
+          let type = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
           const name = (d.name || '').toLowerCase();
+          const storedType = (d.contentType || '').split(';')[0].trim().toLowerCase();
+
+          if (!type || type === 'application/octet-stream') type = storedType;
           if (!type || type === 'application/octet-stream') {
             if (name.endsWith('.pdf')) type = 'application/pdf';
             else if (name.endsWith('.png')) type = 'image/png';
@@ -137,8 +138,38 @@ function docCard(d, restricted) {
             else if (name.endsWith('.txt')) type = 'text/plain';
           }
 
-          if (!['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'text/plain'].includes(type)) {
-            throw new Error('This file type cannot be previewed in the browser.');
+          const officeTypes = [
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-powerpoint',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+          ];
+
+          if (officeTypes.includes(type)) {
+            const url = URL.createObjectURL(blob);
+            tab.document.open();
+            tab.document.write(
+              '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">' +
+              '<title>Document preview</title>' +
+              '<body style="font:16px sans-serif;padding:24px">' +
+              '<h2>Office document</h2>' +
+              '<p>This format needs an Office-compatible viewer to display its contents in the browser.</p>' +
+              '<p>TrustVault has not enabled an Office rendering service yet. The file remains protected by your access permissions.</p>' +
+              '</body>'
+            );
+            tab.document.close();
+            return;
+          }
+
+          const allowed = [
+            'application/pdf', 'image/png', 'image/jpeg',
+            'image/gif', 'image/webp', 'text/plain'
+          ];
+
+          if (!allowed.includes(type)) {
+            throw new Error('Browser preview is not available for this file format yet.');
           }
 
           const url = URL.createObjectURL(new Blob([blob], { type }));
