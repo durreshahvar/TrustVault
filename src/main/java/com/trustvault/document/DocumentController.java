@@ -165,22 +165,33 @@ public class DocumentController {
                     HttpStatus.NOT_FOUND, "Document file not found");
         }
 
-        MediaType mediaType;
-        try {
-            mediaType = MediaType.parseMediaType(document.getContentType());
-        } catch (org.springframework.http.InvalidMediaTypeException ex) {
-            mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        String fileName = document.getName() == null ? "" : document.getName().toLowerCase();
+    byte[] signature = new byte[5];
+    try (var input = Files.newInputStream(path)) {
+        int count = input.read(signature);
+        if (count < 5) {
+            throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "File cannot be previewed");
         }
+    }
 
-        if (!(mediaType.equals(MediaType.APPLICATION_PDF)
-                || mediaType.getType().equals("image")
-                || mediaType.equals(MediaType.TEXT_PLAIN))) {
-            throw new ResponseStatusException(
-                    HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-                    "This file type cannot be previewed in the browser yet. Use a PDF version to preview it.");
-        }
-
-        return ResponseEntity.ok()
+    MediaType mediaType;
+    if (fileName.endsWith(".pdf") ||
+        (signature[0] == '%' && signature[1] == 'P' && signature[2] == 'D' &&
+         signature[3] == 'F' && signature[4] == '-')) {
+        mediaType = MediaType.APPLICATION_PDF;
+    } else if (fileName.endsWith(".png")) {
+        mediaType = MediaType.IMAGE_PNG;
+    } else if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
+        mediaType = MediaType.IMAGE_JPEG;
+    } else if (fileName.endsWith(".gif")) {
+        mediaType = MediaType.IMAGE_GIF;
+    } else if (fileName.endsWith(".txt")) {
+        mediaType = MediaType.TEXT_PLAIN;
+    } else {
+        throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+            "Preview is not supported for this file type. Download it to open it.");
+    }
+    return ResponseEntity.ok()
                 .contentType(mediaType)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.inline().filename(document.getName()).build().toString())
